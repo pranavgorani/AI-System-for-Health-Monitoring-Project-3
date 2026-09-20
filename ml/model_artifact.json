@@ -1,0 +1,51 @@
+{
+  "model_name": "AEGIS-IFOREST-v1",
+  "trained_on": 800,
+  "target_engine": "AEGIS-ENG-001 (Rotax 914/915 Equivalent)",
+  "features": [
+    "rpm",
+    "cht",
+    "egt",
+    "oil_pressure",
+    "oil_temperature",
+    "fuel_flow",
+    "vibration",
+    "battery_voltage"
+  ],
+  "baselines": {
+    "rpm": {
+      "mean": 4220.14,
+      "std": 877.08
+    },
+    "cht": {
+      "mean": 124.78,
+      "std": 9.75
+    },
+    "egt": {
+      "mean": 746.45,
+      "std": 41.34
+    },
+    "oil_pressure": {
+      "mean": 3.98,
+      "std": 0.32
+    },
+    "oil_temperature": {
+      "mean": 92.07,
+      "std": 8.86
+    },
+    "fuel_flow": {
+      "mean": 20.73,
+      "std": 4.43
+    },
+    "vibration": {
+      "mean": 3.12,
+      "std": 0.22
+    },
+    "battery_voltage": {
+      "mean": 28.2,
+      "std": 0.07
+    }
+  },
+  "contamination": 0.03,
+  "status": "TRAINED_AND_VALIDATED"
+}
