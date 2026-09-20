@@ -27,6 +27,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldAlert,
+  Award,
 } from 'lucide-react';
 
 interface NavItem {
@@ -67,6 +68,7 @@ export const Sidebar: React.FC = () => {
         { name: 'AI Diagnostics (XAI)', href: '/diagnostics', icon: Brain },
         { name: 'RUL Prediction', href: '/rul', icon: Hourglass },
         { name: 'Fault Analysis', href: '/fault-analysis', icon: AlertOctagon, badge: activeFaultCount > 0 ? activeFaultCount : undefined },
+        { name: 'Research Validation', href: '/validation', icon: Award },
         { name: 'Fault Injection Lab', href: '/fault-lab', icon: Flame },
       ],
     },

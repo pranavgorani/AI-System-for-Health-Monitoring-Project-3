@@ -100,6 +100,14 @@ def generate_flight_profile(scenario: str, row_count: int = 600, engine_id: str 
         elif scenario == "sensor_drift":
             # Linear drift +1 C per minute
             cht += (i / 60.0) * 1.0
+        elif scenario == "injector_degradation":
+            # Primary Demonstration Scenario: Gradual Cylinder 3 Injector Degradation
+            # EGT Cyl 3 increases by up to +46 C, fuel flow increases by +8%, vibration RMS increases by +14%
+            ramp = min(1.0, max(0.0, (i - 120) / 180.0)) if i > 120 else 0.0
+            egt += ramp * 46.0
+            fuel += ramp * 1.95  # ~8% of 24.5 L/h nominal
+            vib += ramp * 0.45   # ~14% increase
+            oil_p -= ramp * 0.15
         elif scenario == "misfire" and i > 180:
             egt -= 140.0
             vib += 3.4
@@ -135,6 +143,7 @@ def main():
 
     scenarios = [
         ("normal_engine", 800),
+        ("injector_degradation", 600),
         ("degraded_engine", 600),
         ("overheating", 600),
         ("vibration_fault", 600),

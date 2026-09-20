@@ -9,22 +9,34 @@ import {
   MaintenanceAdvisory,
   CanMessage,
   ActiveFaultInjection,
+  ActiveFaultType,
   UserRole,
+  SensorQualityReport,
+  PhysicsModelOutput,
+  MissionRiskAssessment,
+  MissionAssessmentStatus,
 } from './types';
-import { calculateNextTelemetry, DEFAULT_COEFFICIENTS, EngineCoefficients } from './engine/physicsModel';
+import {
+  calculateNextTelemetry,
+  calculatePhysicsResiduals,
+  DEFAULT_COEFFICIENTS,
+  EngineCoefficients,
+} from './engine/physicsModel';
 import { calculateSubsystemHealth } from './engine/healthCalculator';
-import { detectAnomalies } from './ml/anomalyDetector';
+import { validateSensors } from './engine/sensorValidator';
+import { detectAnomalies, resetAnomalyDetectorState } from './ml/anomalyDetector';
 import { classifyFaults } from './ml/faultClassifier';
 import { estimateRul, DegradationLevel } from './ml/rulEstimator';
 import { telemetryToCanFrames } from './engine/canSimulator';
 
 export interface AppState {
-  // Auth & Roles
+  // Auth & Roles (Using clearly fictional research accounts)
   userRole: UserRole;
   isAuthenticated: boolean;
   currentUser: {
     name: string;
     callsign: string;
+    email: string;
     role: UserRole;
   };
 
@@ -46,10 +58,13 @@ export interface AppState {
   // Real-time Pipeline Outputs
   currentTelemetry: EngineTelemetry;
   telemetryHistory: EngineTelemetry[]; // max 120 buffer points
+  sensorReport: SensorQualityReport;
+  physicsOutput: PhysicsModelOutput;
   health: SubsystemHealth;
   anomalies: AnomalyOutput;
   faults: FaultPrediction[];
   rul: RulEstimate;
+  missionAssessment: MissionRiskAssessment;
   canMessages: CanMessage[];
 
   // Operational Queues
@@ -62,18 +77,86 @@ export interface AppState {
   replaySpeed: number; // 0.5, 1, 2, 5, 10
 }
 
+function computeMissionRisk(
+  t: EngineTelemetry,
+  health: SubsystemHealth,
+  faults: FaultPrediction[],
+  anomalies: AnomalyOutput
+): MissionRiskAssessment {
+  const fuelMarginPct = Math.max(0, Math.min(100, Math.round((t.fuel_level / 120) * 100)));
+  const thermalMarginPct = Math.max(0, Math.min(100, Math.round(100 - (t.cht_avg / 155) * 100)));
+  const oilPressureMarginPct = Math.max(0, Math.min(100, Math.round((t.oil_pressure / 5.0) * 100)));
+  const vibrationMarginPct = Math.max(0, Math.min(100, Math.round(100 - (t.vibration_rms / 6.0) * 100)));
+
+  let assessment: MissionAssessmentStatus = 'GO';
+  let primaryRisk = 'Nominal flight parameters across all propulsion subsystems';
+  let recommendation = 'Continue planned mission loiter within standard operational envelopes.';
+  let restriction: string | undefined = undefined;
+  let interruptionRisk: MissionRiskAssessment['interruptionRiskCategory'] = 'LOW';
+
+  const hasCriticalFault = faults.some((f) => f.severity === 'CRITICAL') || health.overall < 50;
+  const hasInjectorDegradation = faults.some((f) => f.faultType === 'INJECTOR_DEGRADATION' || f.faultName.includes('Injector'));
+
+  if (hasCriticalFault) {
+    assessment = 'MAINTENANCE_REQUIRED';
+    primaryRisk = faults[0]?.faultName || 'Critical propulsion subsystem degradation';
+    recommendation = 'Abort sortie loiter, initiate return to base (RTB), and schedule immediate maintenance inspection.';
+    restriction = 'Immediate RTB / reduce engine power setting to < 65% throttle';
+    interruptionRisk = 'CRITICAL';
+  } else if (hasInjectorDegradation) {
+    assessment = 'CONDITIONAL_GO';
+    primaryRisk = 'Reduced thermal and fuel trim margin on Cylinder #3';
+    recommendation = 'Limit hot-weather loiter to 90 minutes and inspect Cylinder 3 injector and validate EGT sensor after mission.';
+    restriction = 'Limit continuous RPM to 4800; avoid sudden wide-open-throttle transients';
+    interruptionRisk = 'MEDIUM';
+  } else if (faults.length > 0 || health.overall < 75 || thermalMarginPct < 15 || anomalies.isAnomaly) {
+    assessment = 'CONDITIONAL_GO';
+    primaryRisk = faults[0]?.faultName || 'Elevated anomaly score or reduced safety margin';
+    recommendation = 'Maintain elevated sensor monitoring; restrict high-load evasive maneuvers.';
+    restriction = 'Avoid high-altitude climb bursts (> 15,000 ft)';
+    interruptionRisk = 'MEDIUM';
+  }
+
+  const faultRiskByFlightPhase = [
+    { phase: 'TAKEOFF' as FlightState, riskLevel: (hasCriticalFault ? 'HIGH' : hasInjectorDegradation ? 'MEDIUM' : 'LOW') as 'LOW' | 'MEDIUM' | 'HIGH', notes: 'Full 100% throttle thermal surge' },
+    { phase: 'CLIMB' as FlightState, riskLevel: (hasInjectorDegradation ? 'MEDIUM' : 'LOW') as 'LOW' | 'MEDIUM' | 'HIGH', notes: 'High manifold boost with decreased airspeed cooling' },
+    { phase: 'CRUISE' as FlightState, riskLevel: (hasCriticalFault ? 'HIGH' : 'LOW') as 'LOW' | 'MEDIUM' | 'HIGH', notes: 'Continuous loiter steady-state' },
+    { phase: 'HIGH_LOAD' as FlightState, riskLevel: (hasInjectorDegradation ? 'HIGH' : 'MEDIUM') as 'LOW' | 'MEDIUM' | 'HIGH', notes: 'Evasion or rapid throttle transition' },
+    { phase: 'DESCENT' as FlightState, riskLevel: 'LOW' as const, notes: 'Idle-cooling shock prevention' },
+  ];
+
+  return {
+    assessment,
+    primaryRisk,
+    fuelMarginPct,
+    thermalMarginPct,
+    oilPressureMarginPct,
+    vibrationMarginPct,
+    interruptionRiskCategory: interruptionRisk,
+    faultRiskByFlightPhase,
+    recommendation,
+    operatingRestriction: restriction,
+    disclaimer: 'Decision-support assessment; not a certified flight-safety or airworthiness release.',
+  };
+}
+
+// Initial Pipeline Construction
 const INITIAL_TELEMETRY: EngineTelemetry = calculateNextTelemetry(null, 'CRUISE');
-const INITIAL_HEALTH = calculateSubsystemHealth(INITIAL_TELEMETRY);
-const INITIAL_ANOMALIES = detectAnomalies(INITIAL_TELEMETRY);
-const INITIAL_FAULTS = classifyFaults(INITIAL_TELEMETRY, { type: 'NONE', subsystem: 'none', severity: 0, startedAt: '', notes: '' });
-const INITIAL_RUL = estimateRul(INITIAL_HEALTH.overall, INITIAL_TELEMETRY.engine_hours, 'NORMAL');
+const INITIAL_SENSOR_REPORT = validateSensors(INITIAL_TELEMETRY, []);
+const INITIAL_PHYSICS = calculatePhysicsResiduals(INITIAL_TELEMETRY);
+const INITIAL_HEALTH = calculateSubsystemHealth(INITIAL_TELEMETRY, INITIAL_SENSOR_REPORT);
+const INITIAL_ANOMALIES = detectAnomalies(INITIAL_TELEMETRY, INITIAL_PHYSICS, INITIAL_SENSOR_REPORT);
+const INITIAL_FAULTS = classifyFaults(INITIAL_TELEMETRY, { type: 'NONE', subsystem: 'none', severity: 0, startedAt: '', notes: '' }, INITIAL_PHYSICS, INITIAL_SENSOR_REPORT);
+const INITIAL_RUL = estimateRul(INITIAL_HEALTH.overall, INITIAL_TELEMETRY.engine_hours, 'NORMAL', undefined, INITIAL_FAULTS, INITIAL_PHYSICS, INITIAL_SENSOR_REPORT);
+const INITIAL_MISSION_ASSESSMENT = computeMissionRisk(INITIAL_TELEMETRY, INITIAL_HEALTH, INITIAL_FAULTS, INITIAL_ANOMALIES);
 
 export const INITIAL_STATE: AppState = {
   userRole: 'ADMIN',
   isAuthenticated: true,
   currentUser: {
-    name: 'Wg Cdr S. Sharma (Retd)',
-    callsign: 'DRDO-GCS-ALPHA',
+    name: 'Research Demonstrator Lead',
+    callsign: 'GCS-SIM-ALPHA',
+    email: 'admin.demo@aegis-twin.local',
     role: 'ADMIN',
   },
   isDemoMode: true,
@@ -89,10 +172,13 @@ export const INITIAL_STATE: AppState = {
   activeFault: { type: 'NONE', subsystem: 'none', severity: 0, startedAt: '', notes: '' },
   currentTelemetry: INITIAL_TELEMETRY,
   telemetryHistory: [INITIAL_TELEMETRY],
+  sensorReport: INITIAL_SENSOR_REPORT,
+  physicsOutput: INITIAL_PHYSICS,
   health: INITIAL_HEALTH,
   anomalies: INITIAL_ANOMALIES,
   faults: INITIAL_FAULTS,
   rul: INITIAL_RUL,
+  missionAssessment: INITIAL_MISSION_ASSESSMENT,
   canMessages: telemetryToCanFrames(INITIAL_TELEMETRY),
   alerts: [
     {
@@ -100,9 +186,9 @@ export const INITIAL_STATE: AppState = {
       timestamp: new Date().toISOString(),
       severity: 'INFO',
       subsystem: 'FADEC Core',
-      description: 'Telemetry stream initialized over virtual ARINC-429/CAN bridge',
-      evidence: 'All 10 primary engine sensors synchronized',
-      recommendedAction: 'Verify pre-flight digital twin baseline',
+      description: 'Telemetry stream synchronized over virtual CAN 2.0B / J1939 bridge',
+      evidence: 'All primary transducers initialized and passing sensor-health checks',
+      recommendedAction: 'Verify baseline digital twin telemetry before mission start',
       acknowledged: true,
       resolved: false,
     },
@@ -110,15 +196,15 @@ export const INITIAL_STATE: AppState = {
   maintenanceAdvisories: [
     {
       id: 'ADV-001',
-      issue: 'Routine 50-hr Spark Plug & Injector Flow Inspection',
+      issue: 'Routine 50-hr Spark Plug & Injector Flow Verification',
       subsystem: 'Combustion System',
       priority: 'LOW',
-      reason: 'Scheduled interval approaching within 8.5 operating hours',
-      confidence: 99,
-      suggestedInspection: 'Borescope inspection of cylinder #3 and injector flow nozzle verification.',
-      detectedCondition: 'Nominal wear trajectory',
-      supportingEvidence: ['Operating hours: 142.5 hrs', 'EGT balance within tolerance'],
-      estimatedUrgencyHours: 8.5,
+      reason: 'Scheduled maintenance inspection approaching within 7.5 operating hours',
+      confidence: 96,
+      suggestedInspection: 'Borescope inspection of Cylinder 3 and injector flow rate calibration.',
+      detectedCondition: 'Nominal wear profile',
+      supportingEvidence: ['Operating hours: 142.5 hrs', 'Cylinder EGT delta within normal tolerances'],
+      estimatedUrgencyHours: 7.5,
       status: 'SCHEDULED',
     },
   ],
@@ -148,6 +234,44 @@ function notify(): void {
 let tickCounter = 0;
 
 /**
+ * Executes the complete PHM pipeline for a given telemetry frame:
+ * Telemetry -> Sensor Validation -> Physics Grey-Box -> Residuals -> Anomaly Detection ->
+ * Fault Diagnosis -> Health Index -> RUL Forecasting -> Mission Risk -> Maintenance Advisories
+ */
+export function processTelemetryFrame(
+  nextTelem: EngineTelemetry,
+  activeFault: ActiveFaultInjection = state.activeFault
+) {
+  const sensorReport = validateSensors(nextTelem, state.telemetryHistory);
+  const physicsOutput = calculatePhysicsResiduals(nextTelem, state.coefficients);
+  const nextHealth = calculateSubsystemHealth(nextTelem, sensorReport);
+  const nextAnomalies = detectAnomalies(nextTelem, physicsOutput, sensorReport);
+  const nextFaults = classifyFaults(nextTelem, activeFault, physicsOutput, sensorReport);
+  const nextRul = estimateRul(
+    nextHealth.overall,
+    nextTelem.engine_hours,
+    state.degradationLevel,
+    state.customDegradationRate,
+    nextFaults,
+    physicsOutput,
+    sensorReport
+  );
+  const nextMissionRisk = computeMissionRisk(nextTelem, nextHealth, nextFaults, nextAnomalies);
+  const nextCan = state.isCanActive ? telemetryToCanFrames(nextTelem) : state.canMessages;
+
+  return {
+    sensorReport,
+    physicsOutput,
+    nextHealth,
+    nextAnomalies,
+    nextFaults,
+    nextRul,
+    nextMissionRisk,
+    nextCan,
+  };
+}
+
+/**
  * Step the simulation pipeline forward by one tick
  */
 export function stepSimulation(): void {
@@ -162,17 +286,16 @@ export function stepSimulation(): void {
     tickCounter
   );
 
-  const nextHealth = calculateSubsystemHealth(nextTelem);
-  const nextAnomalies = detectAnomalies(nextTelem);
-  const nextFaults = classifyFaults(nextTelem, state.activeFault);
-  const nextRul = estimateRul(
-    nextHealth.overall,
-    nextTelem.engine_hours,
-    state.degradationLevel,
-    state.customDegradationRate,
-    nextFaults.length
-  );
-  const nextCan = state.isCanActive ? telemetryToCanFrames(nextTelem) : state.canMessages;
+  const {
+    sensorReport,
+    physicsOutput,
+    nextHealth,
+    nextAnomalies,
+    nextFaults,
+    nextRul,
+    nextMissionRisk,
+    nextCan,
+  } = processTelemetryFrame(nextTelem);
 
   // Buffer management (keep last 60 points for smooth charts)
   const history = [...state.telemetryHistory.slice(-59), nextTelem];
@@ -207,7 +330,7 @@ export function stepSimulation(): void {
         supportingEvidence: [
           `Fault Probability: ${f.probability}%`,
           `Subsystem Health Impact: ${nextHealth.status}`,
-          ...f.detectedParameters,
+          ...(f.evidence || f.detectedParameters),
         ],
         estimatedUrgencyHours: f.severity === 'CRITICAL' ? 2 : 12,
         status: 'PENDING',
@@ -219,10 +342,13 @@ export function stepSimulation(): void {
     ...state,
     currentTelemetry: nextTelem,
     telemetryHistory: history,
+    sensorReport,
+    physicsOutput,
     health: nextHealth,
     anomalies: nextAnomalies,
     faults: nextFaults,
     rul: nextRul,
+    missionAssessment: nextMissionRisk,
     canMessages: nextCan,
     alerts: currentAlerts.slice(0, 50),
     maintenanceAdvisories: state.maintenanceAdvisories.slice(0, 30),
@@ -237,21 +363,31 @@ export function setFlightState(newState: FlightState): void {
   notify();
 }
 
-export function injectFault(type: ActiveFaultInjection['type'], notes: string = ''): void {
+export function injectFault(type: ActiveFaultType, notes: string = '', severity: number = 0.85): void {
+  let subsystem = 'Combustion';
+  if (type === 'LUBRICATION_ISSUE') subsystem = 'Lubrication';
+  else if (type === 'ABNORMAL_VIBRATION') subsystem = 'Crankshaft & Propeller';
+  else if (type.includes('SENSOR')) subsystem = 'Sensors & Instrumentation';
+  else if (type === 'ELECTRICAL_FAULT') subsystem = 'Electrical & FADEC Bus';
+  else if (type === 'OVERHEATING') subsystem = 'Cooling & Thermal';
+  else if (type === 'GRADUAL_INJECTOR_DEGRADATION') subsystem = 'Fuel Injection & Combustion';
+
   state = {
     ...state,
     activeFault: {
       type,
-      subsystem: type.includes('LUBRIC') ? 'Lubrication' : type.includes('VIB') ? 'Crankshaft' : 'Combustion',
-      severity: 0.85,
+      subsystem,
+      severity,
       startedAt: new Date().toISOString(),
       notes: notes || `Simulated injection of ${type} fault profile`,
+      affectedCylinder: type.includes('INJECTOR') || type === 'MISFIRE' ? 3 : undefined,
     },
   };
   notify();
 }
 
 export function clearFault(): void {
+  resetAnomalyDetectorState();
   state = {
     ...state,
     activeFault: { type: 'NONE', subsystem: 'none', severity: 0, startedAt: '', notes: '' },
@@ -290,12 +426,20 @@ export function resolveAlert(alertId: string): void {
 }
 
 export function setRole(role: UserRole): void {
+  const emailMap: Record<UserRole, string> = {
+    ADMIN: 'admin.demo@aegis-twin.local',
+    OPERATOR: 'operator.demo@aegis-twin.local',
+    MAINTENANCE_ENGINEER: 'maintenance.demo@aegis-twin.local',
+    ANALYST: 'analyst.demo@aegis-twin.local',
+  };
+
   state = {
     ...state,
     userRole: role,
     currentUser: {
       ...state.currentUser,
       role,
+      email: emailMap[role],
     },
   };
   notify();
@@ -320,6 +464,7 @@ export function updateCoefficients(coeffs: Partial<EngineCoefficients>): void {
 }
 
 export function resetToDefaults(): void {
+  resetAnomalyDetectorState();
   state = {
     ...INITIAL_STATE,
     telemetryHistory: [INITIAL_TELEMETRY],

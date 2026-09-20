@@ -2,6 +2,20 @@ import { CanMessage, EngineTelemetry } from '../types';
 
 export function telemetryToCanFrames(t: EngineTelemetry): CanMessage[] {
   const ts = t.timestamp;
+  if (t.missing_data_flag) {
+    return [
+      {
+        id: 'CAN-TIMEOUT',
+        canId: '0x18FFFFFF',
+        signal: 'BUS_LINK_TIMEOUT',
+        value: 'TIMEOUT',
+        unit: 'STATUS',
+        timestamp: ts,
+        status: 'ERROR',
+      },
+    ];
+  }
+
   return [
     {
       id: 'CAN-1',
@@ -50,6 +64,15 @@ export function telemetryToCanFrames(t: EngineTelemetry): CanMessage[] {
     },
     {
       id: 'CAN-6',
+      canId: '0x18FE0200',
+      signal: 'CYL3_EGT_INDIVIDUAL',
+      value: t.egt_3,
+      unit: '°C',
+      timestamp: ts,
+      status: Math.abs(t.egt_3 - t.egt_avg) > 40 ? 'WARNING' : 'OK',
+    },
+    {
+      id: 'CAN-7',
       canId: '0x18FEF200',
       signal: 'FUEL_FLOW_RATE',
       value: t.fuel_flow,
@@ -58,7 +81,7 @@ export function telemetryToCanFrames(t: EngineTelemetry): CanMessage[] {
       status: 'OK',
     },
     {
-      id: 'CAN-7',
+      id: 'CAN-8',
       canId: '0x18FF3000',
       signal: 'BEARING_VIBRATION_RMS',
       value: t.vibration_rms,
@@ -67,7 +90,16 @@ export function telemetryToCanFrames(t: EngineTelemetry): CanMessage[] {
       status: t.vibration_rms > 5.0 ? 'ERROR' : t.vibration_rms > 4.2 ? 'WARNING' : 'OK',
     },
     {
-      id: 'CAN-8',
+      id: 'CAN-9',
+      canId: '0x18FEE600',
+      signal: 'MANIFOLD_AIR_PRESSURE',
+      value: t.manifold_pressure,
+      unit: 'hPa',
+      timestamp: ts,
+      status: 'OK',
+    },
+    {
+      id: 'CAN-10',
       canId: '0x18FEF700',
       signal: 'FADEC_BUS_VOLTAGE',
       value: t.battery_voltage,
@@ -76,7 +108,7 @@ export function telemetryToCanFrames(t: EngineTelemetry): CanMessage[] {
       status: t.battery_voltage < 24.0 ? 'WARNING' : 'OK',
     },
     {
-      id: 'CAN-9',
+      id: 'CAN-11',
       canId: '0x18FEF800',
       signal: 'ALTERNATOR_LOAD_CURRENT',
       value: t.alternator_current,
@@ -85,7 +117,7 @@ export function telemetryToCanFrames(t: EngineTelemetry): CanMessage[] {
       status: 'OK',
     },
     {
-      id: 'CAN-10',
+      id: 'CAN-12',
       canId: '0x18F00400',
       signal: 'THROTTLE_COMMAND_PCT',
       value: t.throttle,

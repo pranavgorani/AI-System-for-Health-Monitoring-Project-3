@@ -1,128 +1,134 @@
-import { EngineTelemetry, SubsystemHealth, HealthStatus } from '../types';
+import {
+  EngineTelemetry,
+  SubsystemHealth,
+  HealthStatus,
+  SensorQualityReport,
+} from '../types';
 
 export interface HealthWeights {
-  combustion: number;
-  fuel_system: number;
-  lubrication: number;
-  cooling: number;
-  exhaust: number;
-  crankshaft: number;
-  propeller: number;
-  electrical: number;
-  sensors: number;
+  combustion: number;   // 0.22
+  thermal: number;      // 0.18
+  lubrication: number;  // 0.18
+  vibration: number;    // 0.16
+  fuel_system: number;  // 0.12
+  electrical: number;   // 0.08
+  sensors: number;      // 0.06
 }
 
-export const DEFAULT_HEALTH_WEIGHTS: HealthWeights = {
-  combustion: 0.20,
-  fuel_system: 0.12,
+export const DOCUMENTED_HEALTH_WEIGHTS: HealthWeights = {
+  combustion: 0.22,
+  thermal: 0.18,
   lubrication: 0.18,
-  cooling: 0.14,
-  exhaust: 0.10,
-  crankshaft: 0.12,
-  propeller: 0.05,
-  electrical: 0.05,
-  sensors: 0.04,
+  vibration: 0.16,
+  fuel_system: 0.12,
+  electrical: 0.08,
+  sensors: 0.06,
 };
 
 /**
- * Calculates subsystem health based on physical operating limits,
- * temperature spreads, pressure deviations, and vibration signatures.
+ * Calculates physics-informed subsystem health and weighted overall degradation index.
+ * Formula: overallHealth = 100 - sum(weighted degradation penalties)
  */
 export function calculateSubsystemHealth(
   t: EngineTelemetry,
-  weights: HealthWeights = DEFAULT_HEALTH_WEIGHTS
+  sensorReport?: SensorQualityReport,
+  weights: HealthWeights = DOCUMENTED_HEALTH_WEIGHTS
 ): SubsystemHealth {
-  // 1. Combustion Health: based on CHT/EGT balance, efficiency, and individual cylinder delta
+  const contributions: Record<string, number> = {};
+
+  // 1. COMBUSTION HEALTH (Weight: 22%)
+  // Based on EGT cylinder-to-cylinder spread, peak EGT margin, and thermal-mechanical efficiency
   const egtSpread = Math.max(t.egt_1, t.egt_2, t.egt_3, t.egt_4) - Math.min(t.egt_1, t.egt_2, t.egt_3, t.egt_4);
-  let combustion = 100;
-  if (egtSpread > 45) combustion -= (egtSpread - 45) * 0.8;
-  if (t.egt_avg > 820) combustion -= (t.egt_avg - 820) * 1.5;
-  if (t.efficiency < 28) combustion -= (28 - t.efficiency) * 2.2;
-  combustion = Math.max(10, Math.min(100, Math.round(combustion)));
+  let combustionPenalty = 0;
+  if (egtSpread > 38) combustionPenalty += (egtSpread - 38) * 0.75;
+  if (t.egt_avg > 820) combustionPenalty += (t.egt_avg - 820) * 1.6;
+  if (t.efficiency < 28 && t.flight_state === 'CRUISE') combustionPenalty += (28 - t.efficiency) * 2.5;
+  const combustion = Math.max(10, Math.min(100, Math.round(100 - combustionPenalty)));
+  contributions['Combustion Imbalance / Inefficiency'] = Math.round(combustionPenalty * weights.combustion * 10) / 10;
 
-  // 2. Fuel System Health: fuel flow expected vs actual, pressure delivery
-  let fuel_system = 100;
-  if (t.fuel_flow > 33) fuel_system -= (t.fuel_flow - 33) * 5;
-  if (t.flight_state === 'CRUISE' && t.fuel_flow > 24) fuel_system -= 18;
-  if (egtSpread > 60) fuel_system -= 20; // injector blockage sign
-  fuel_system = Math.max(15, Math.min(100, Math.round(fuel_system)));
-
-  // 3. Lubrication Health: Oil pressure (nominal 2.5 - 5.0 bar) and Oil temp (nominal 75 - 110 °C)
-  let lubrication = 100;
-  if (t.oil_pressure < 2.0) {
-    lubrication -= (2.0 - t.oil_pressure) * 45;
-  } else if (t.oil_pressure > 5.5) {
-    lubrication -= (t.oil_pressure - 5.5) * 20;
-  }
-  if (t.oil_temperature > 115) {
-    lubrication -= (t.oil_temperature - 115) * 2.2;
-  }
-  lubrication = Math.max(8, Math.min(100, Math.round(lubrication)));
-
-  // 4. Cooling Health: CHT margins (nominal < 135 °C, max 150 °C)
-  let cooling = 100;
-  if (t.cht_avg > 135) {
-    cooling -= (t.cht_avg - 135) * 2.5;
-  }
+  // 2. THERMAL HEALTH (Cooling & Cylinder Heads) (Weight: 18%)
+  // CHT nominal < 135°C, max 150°C; CHT spread across cylinders
   const chtSpread = Math.max(t.cht_1, t.cht_2, t.cht_3, t.cht_4) - Math.min(t.cht_1, t.cht_2, t.cht_3, t.cht_4);
-  if (chtSpread > 18) cooling -= (chtSpread - 18) * 1.5;
-  cooling = Math.max(10, Math.min(100, Math.round(cooling)));
+  let thermalPenalty = 0;
+  if (t.cht_avg > 135) thermalPenalty += (t.cht_avg - 135) * 2.8;
+  if (chtSpread > 14) thermalPenalty += (chtSpread - 14) * 1.8;
+  if (t.oil_temperature > 115) thermalPenalty += (t.oil_temperature - 115) * 1.4;
+  const cooling = Math.max(10, Math.min(100, Math.round(100 - thermalPenalty)));
+  contributions['Thermal Margin Degradation'] = Math.round(thermalPenalty * weights.thermal * 10) / 10;
 
-  // 5. Exhaust Health: EGT temperatures (< 850 °C safe)
-  let exhaust = 100;
-  if (t.egt_avg > 800) {
-    exhaust -= (t.egt_avg - 800) * 1.2;
+  // 3. LUBRICATION HEALTH (Weight: 18%)
+  // Hydraulic line pressure (nominal 2.5 - 5.0 bar) and oil temperature viscosity envelope
+  let lubricationPenalty = 0;
+  if (t.oil_pressure < 2.2 && t.rpm > 1500) {
+    lubricationPenalty += (2.2 - t.oil_pressure) * 55;
+  } else if (t.oil_pressure > 5.5) {
+    lubricationPenalty += (t.oil_pressure - 5.5) * 25;
   }
-  exhaust = Math.max(15, Math.min(100, Math.round(exhaust)));
-
-  // 6. Crankshaft / Bearing Health: Vibration RMS (< 4.5 mm/s normal)
-  let crankshaft = 100;
-  if (t.vibration_rms > 4.5) {
-    crankshaft -= (t.vibration_rms - 4.5) * 16;
+  if (t.oil_temperature > 118) {
+    lubricationPenalty += (t.oil_temperature - 118) * 2.4;
   }
-  crankshaft = Math.max(12, Math.min(100, Math.round(crankshaft)));
+  const lubrication = Math.max(8, Math.min(100, Math.round(100 - lubricationPenalty)));
+  contributions['Lubrication Pressure / Thermal Penalty'] = Math.round(lubricationPenalty * weights.lubrication * 10) / 10;
 
-  // 7. Propeller Interface Health: RPM harmonic stability
-  let propeller = 100;
-  if (t.vibration_rms > 5.2 && t.rpm > 4500) {
-    propeller -= (t.vibration_rms - 5.2) * 12;
+  // 4. VIBRATION & CRANKSHAFT HEALTH (Weight: 16%)
+  // Vibration RMS (< 4.5 mm/s normal) and peak harmonic energy
+  let vibrationPenalty = 0;
+  if (t.vibration_rms > 4.2) {
+    vibrationPenalty += (t.vibration_rms - 4.2) * 18;
   }
-  propeller = Math.max(20, Math.min(100, Math.round(propeller)));
+  if (t.vibration_peak > 6.0) {
+    vibrationPenalty += (t.vibration_peak - 6.0) * 8;
+  }
+  const crankshaft = Math.max(12, Math.min(100, Math.round(100 - vibrationPenalty)));
+  contributions['Rotational Vibration Dynamics'] = Math.round(vibrationPenalty * weights.vibration * 10) / 10;
 
-  // 8. Electrical Health: Bus voltage (26 - 29 V nominal) and alternator load
-  let electrical = 100;
+  // 5. FUEL SYSTEM HEALTH (Weight: 12%)
+  // Expected vs actual fuel flow rate & injector disparity
+  let fuelPenalty = 0;
+  if (t.flight_state === 'CRUISE' && t.fuel_flow > 23.5) {
+    fuelPenalty += (t.fuel_flow - 23.5) * 6.5;
+  }
+  if (egtSpread > 45) fuelPenalty += (egtSpread - 45) * 0.4;
+  const fuel_system = Math.max(15, Math.min(100, Math.round(100 - fuelPenalty)));
+  contributions['Fuel Delivery & BSFC Divergence'] = Math.round(fuelPenalty * weights.fuel_system * 10) / 10;
+
+  // 6. ELECTRICAL HEALTH (Weight: 8%)
+  // FADEC bus voltage (nominal 26.0 - 29.0 V) and alternator generation
+  let electricalPenalty = 0;
   if (t.battery_voltage < 24.5) {
-    electrical -= (24.5 - t.battery_voltage) * 25;
+    electricalPenalty += (24.5 - t.battery_voltage) * 28;
   } else if (t.battery_voltage > 29.5) {
-    electrical -= (t.battery_voltage - 29.5) * 30;
+    electricalPenalty += (t.battery_voltage - 29.5) * 35;
   }
   if (t.alternator_current > 55) {
-    electrical -= (t.alternator_current - 55) * 2;
+    electricalPenalty += (t.alternator_current - 55) * 2;
   }
-  electrical = Math.max(10, Math.min(100, Math.round(electrical)));
+  const electrical = Math.max(10, Math.min(100, Math.round(100 - electricalPenalty)));
+  contributions['Electrical / FADEC Bus Deviation'] = Math.round(electricalPenalty * weights.electrical * 10) / 10;
 
-  // 9. Sensor Health: Consistency check across channels
-  let sensors = 100;
-  if (t.oil_pressure === 0 && t.rpm > 1000) {
-    sensors = 35; // likely sensor disconnect
-  }
-  if (isNaN(t.cht_avg) || isNaN(t.egt_avg)) {
-    sensors = 20;
-  }
-  sensors = Math.max(10, Math.min(100, Math.round(sensors)));
+  // 7. SENSOR / DATA HEALTH (Weight: 6%)
+  // Driven by sensor validation quality report
+  const sensorConfidence = sensorReport ? sensorReport.overallSensorConfidence : 96;
+  const sensorPenalty = Math.max(0, 100 - sensorConfidence);
+  const sensors = Math.max(10, Math.min(100, Math.round(100 - sensorPenalty)));
+  contributions['Sensor Telemetry Quality Loss'] = Math.round(sensorPenalty * weights.sensors * 10) / 10;
 
-  // Overall Weighted Engine Health
-  const overall = Math.round(
-    combustion * weights.combustion +
-    fuel_system * weights.fuel_system +
-    lubrication * weights.lubrication +
-    cooling * weights.cooling +
-    exhaust * weights.exhaust +
-    crankshaft * weights.crankshaft +
-    propeller * weights.propeller +
-    electrical * weights.electrical +
-    sensors * weights.sensors
-  );
+  // Exhaust & Propeller legacy subsystem compatibility
+  const exhaust = Math.max(15, Math.min(100, Math.round(100 - (t.egt_avg > 800 ? (t.egt_avg - 800) * 1.2 : 0))));
+  const propeller = Math.max(20, Math.min(100, Math.round(100 - (t.vibration_rms > 5.0 ? (t.vibration_rms - 5.0) * 14 : 0))));
+
+  // OVERALL WEIGHTED CALCULATION
+  // Formula: overallHealth = 100 - sum(weighted penalties)
+  const totalWeightedPenalty =
+    combustionPenalty * weights.combustion +
+    thermalPenalty * weights.thermal +
+    lubricationPenalty * weights.lubrication +
+    vibrationPenalty * weights.vibration +
+    fuelPenalty * weights.fuel_system +
+    electricalPenalty * weights.electrical +
+    sensorPenalty * weights.sensors;
+
+  const overall = Math.max(10, Math.min(100, Math.round(100 - totalWeightedPenalty)));
 
   let status: HealthStatus = 'NORMAL';
   if (overall < 50) {
@@ -145,6 +151,8 @@ export function calculateSubsystemHealth(
     electrical,
     sensors,
     status,
-    confidence: 96,
+    confidence: sensorConfidence,
+    contributions,
+    disclaimer: 'Model-based research health index; not a certified aerospace flight-safety score.',
   };
 }

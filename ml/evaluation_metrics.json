@@ -1,13 +1,62 @@
 {
-  "accuracy": 64.15,
-  "precision": 100.0,
-  "recall": 48.22,
-  "f1_score": 65.07,
-  "total_test_samples": 2600,
+  "dataset_version": "v2.4-synthetic-multiphysics",
+  "validation_strategy": "Mission-Level Holdout Stratification",
+  "total_test_samples": 3800,
+  "accuracy": 54.84,
+  "precision": 95.86,
+  "recall": 44.73,
+  "f1_score": 61.0,
+  "mean_lead_time_sec": 478.0,
+  "false_alarm_rate_filtered_pct": 7.25,
+  "false_alarm_rate_unfiltered_pct": 7.48,
+  "per_class": {
+    "Nominal": {
+      "samples": 800,
+      "precision": 0.0,
+      "recall": 100.0,
+      "f1": 0.0,
+      "lead_time_sec": 0.0
+    },
+    "Injector Degradation": {
+      "samples": 600,
+      "precision": 100.0,
+      "recall": 9.67,
+      "f1": 17.63,
+      "lead_time_sec": 478.0
+    },
+    "Overheating": {
+      "samples": 600,
+      "precision": 100.0,
+      "recall": 41.0,
+      "f1": 58.16,
+      "lead_time_sec": 478.0
+    },
+    "Vibration Fault": {
+      "samples": 600,
+      "precision": 100.0,
+      "recall": 84.17,
+      "f1": 91.4,
+      "lead_time_sec": 478.0
+    },
+    "Sensor Drift": {
+      "samples": 600,
+      "precision": 100.0,
+      "recall": 9.67,
+      "f1": 17.63,
+      "lead_time_sec": 478.0
+    },
+    "Misfire": {
+      "samples": 600,
+      "precision": 100.0,
+      "recall": 79.17,
+      "f1": 88.37,
+      "lead_time_sec": 478.0
+    }
+  },
   "confusion_matrix": {
-    "true_positive": 868,
-    "false_positive": 0,
-    "true_negative": 800,
-    "false_negative": 932
+    "true_positive": 1342,
+    "false_positive": 58,
+    "true_negative": 742,
+    "false_negative": 1658
   }
 }

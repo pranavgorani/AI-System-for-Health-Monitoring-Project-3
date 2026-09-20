@@ -6,6 +6,12 @@ export async function GET() {
   return NextResponse.json({
     rul: state.rul,
     degradation_level: state.degradationLevel,
+    confidence_interval: state.rul.confidenceInterval,
+    confidence_level: state.rul.confidenceLevel,
+    failure_criteria: state.rul.endOfLifeCriterion,
     timestamp: new Date().toISOString(),
+    modelVersion: 'v2.4-hybrid-phm',
+    datasetVersion: 'v2.4-synthetic-multiphysics',
+    limitations: 'Prognostic projection based on component-specific degradation rates. Subject to operational mission profile variations.',
   });
 }

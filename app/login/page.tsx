@@ -9,7 +9,7 @@ import { Shield, Lock, User, ArrowRight, Plane, Info } from 'lucide-react';
 export default function LoginPage() {
   const router = useRouter();
   const [selectedRole, setSelectedRole] = useState<UserRole>('ADMIN');
-  const [username, setUsername] = useState('admin.drdo@aegis.mil');
+  const [username, setUsername] = useState('admin.demo@aegis-twin.local');
   const [password, setPassword] = useState('••••••••••••');
 
   const handleLogin = (e: React.FormEvent) => {
@@ -40,15 +40,18 @@ export default function LoginPage() {
             AEGIS-TWIN
           </h1>
           <p className="text-xs font-mono text-cyan-400/80 uppercase tracking-widest">
-            DRDO / iDEX MALE UAV Propulsion Health Platform
+            UAV Propulsion PHM Research Demonstrator
           </p>
+          <div className="text-[10px] font-mono text-slate-500 px-3 py-1 rounded bg-slate-900/60 border border-slate-800 mt-1">
+            DEMONSTRATION SANDBOX · SYNTHETIC ENGINE TELEMETRY
+          </div>
         </div>
 
         {/* Login Form */}
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
             <label className="block text-[11px] font-mono text-slate-400 uppercase mb-1">
-              Operator Callsign / Email
+              Operator Callsign / Local Account
             </label>
             <div className="relative">
               <User className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
@@ -87,10 +90,10 @@ export default function LoginPage() {
               onChange={(e) => setSelectedRole(e.target.value as UserRole)}
               className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-sm text-cyan-300 font-bold focus:outline-none focus:border-cyan-400"
             >
-              <option value="ADMIN">ADMIN (Full GCS & Simulation Control)</option>
-              <option value="OPERATOR">OPERATOR (Live Telemetry & Mission Tracking)</option>
-              <option value="MAINTENANCE_ENGINEER">MAINTENANCE ENGINEER (Faults & RUL)</option>
-              <option value="ANALYST">ANALYST (Historical Analytics & Reports)</option>
+              <option value="ADMIN">ADMIN (Full Evaluation &amp; Simulation Control)</option>
+              <option value="OPERATOR">OPERATOR (Live Telemetry &amp; Mission Tracking)</option>
+              <option value="MAINTENANCE_ENGINEER">MAINTENANCE ENGINEER (Diagnostics &amp; RUL)</option>
+              <option value="ANALYST">ANALYST (Historical Analytics &amp; Reports)</option>
             </select>
           </div>
 
@@ -107,37 +110,37 @@ export default function LoginPage() {
         <div className="pt-4 border-t border-slate-800 space-y-2">
           <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400 uppercase">
             <Info className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Click to auto-authenticate in Demo Mode:</span>
+            <span>Select Preset Demonstrator Profile:</span>
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs font-mono">
             <button
-              onClick={() => handleDemoPreset('ADMIN', 'admin.drdo@aegis.mil')}
+              onClick={() => handleDemoPreset('ADMIN', 'admin.demo@aegis-twin.local')}
               className="p-2 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-left text-cyan-300 hover:border-cyan-400 transition"
             >
               <div className="font-bold">ADMIN</div>
-              <div className="text-[10px] text-slate-500 truncate">admin.drdo@...</div>
+              <div className="text-[10px] text-slate-500 truncate">admin.demo@...</div>
             </button>
             <button
-              onClick={() => handleDemoPreset('OPERATOR', 'operator.gcs@aegis.mil')}
+              onClick={() => handleDemoPreset('OPERATOR', 'operator.demo@aegis-twin.local')}
               className="p-2 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-left text-emerald-300 hover:border-emerald-400 transition"
             >
               <div className="font-bold">OPERATOR</div>
-              <div className="text-[10px] text-slate-500 truncate">operator.gcs@...</div>
+              <div className="text-[10px] text-slate-500 truncate">operator.demo@...</div>
             </button>
             <button
-              onClick={() => handleDemoPreset('MAINTENANCE_ENGINEER', 'maint.eng@aegis.mil')}
+              onClick={() => handleDemoPreset('MAINTENANCE_ENGINEER', 'maintenance.demo@aegis-twin.local')}
               className="p-2 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-left text-amber-300 hover:border-amber-400 transition"
             >
               <div className="font-bold">MAINT ENG</div>
-              <div className="text-[10px] text-slate-500 truncate">maint.eng@...</div>
+              <div className="text-[10px] text-slate-500 truncate">maintenance.demo@...</div>
             </button>
             <button
-              onClick={() => handleDemoPreset('ANALYST', 'analyst.flight@aegis.mil')}
+              onClick={() => handleDemoPreset('ANALYST', 'analyst.demo@aegis-twin.local')}
               className="p-2 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-left text-indigo-300 hover:border-indigo-400 transition"
             >
               <div className="font-bold">ANALYST</div>
-              <div className="text-[10px] text-slate-500 truncate">analyst.flight@...</div>
+              <div className="text-[10px] text-slate-500 truncate">analyst.demo@...</div>
             </button>
           </div>
         </div>

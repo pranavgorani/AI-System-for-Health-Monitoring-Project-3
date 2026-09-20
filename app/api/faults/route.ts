@@ -6,6 +6,9 @@ export async function GET() {
   return NextResponse.json({
     active_faults: state.faults,
     active_injection: state.activeFault,
+    modelVersion: 'v2.4-hybrid-phm',
+    datasetVersion: 'v2.4-synthetic-multiphysics',
+    limitations: '12-class classifier output. Demonstration Mode: Not certified for safety-critical flight shutdown.',
   });
 }
 

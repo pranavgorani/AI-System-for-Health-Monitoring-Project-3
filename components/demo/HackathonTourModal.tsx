@@ -46,17 +46,17 @@ export const HackathonTourModal: React.FC<HackathonTourModalProps> = ({ isOpen, 
   const steps: TourStep[] = [
     {
       step: 1,
-      title: 'Real-Time Telemetry & Engine GCS Baseline',
-      subtitle: 'Synchronized Ground Control Station Stream',
+      title: 'System Overview & Research Demonstrator Readiness',
+      subtitle: 'Executive Ground Control Station Baseline',
       route: '/dashboard',
       icon: Activity,
       description:
-        'Demonstrates continuous telemetry ingestion (RPM, CHT, EGT, Oil Pressure, Vibration) over a simulated J1939/CAN 2.0B bus. All values follow realistic aero piston thermodynamic relationships.',
-      actionLabel: 'Set Engine to Cruise (4650 RPM)',
+        'Demonstrates an offline-capable, standalone aero-piston digital twin system for MALE UAVs. Ingests 26 telemetry channels at 10 Hz with strict local execution and explicit research positioning.',
+      actionLabel: 'Set Engine to Nominal Cruise (4650 RPM)',
       highlights: [
-        'Physics-coupled thermodynamic parameters',
-        'Cylinder-by-cylinder CHT and EGT readings',
-        'Vibration RMS & hydrodynamic lubrication pressure',
+        'Air-gapped operation with zero external cloud dependencies',
+        '26-parameter telemetry suite covering all engine subsystems',
+        'Real-time mission suitability (GO) and composite health (98%)',
       ],
       executeAction: () => {
         if (!getState().isSimulating) toggleSimulation();
@@ -67,90 +67,198 @@ export const HackathonTourModal: React.FC<HackathonTourModalProps> = ({ isOpen, 
     },
     {
       step: 2,
-      title: 'Interactive Digital Twin Subsystem View',
-      subtitle: 'Component-Level Virtual Engine Representation',
+      title: '26-Parameter Telemetry Suite & CAN Decoding',
+      subtitle: 'Avionics Bus Ingestion & Unit Consistency',
+      route: '/telemetry',
+      icon: Activity,
+      description:
+        'Examine the comprehensive 26-channel aerospace sensor suite including individual cylinder EGT 1-4, CHT 1-4, manifold pressure, and fuel flow packed into dual-redundant CAN 2.0B / J1939 frames.',
+      actionLabel: 'Inspect Telemetry Channels',
+      highlights: [
+        'Cylinder-by-cylinder thermal balance (EGT 1-4, CHT 1-4)',
+        'Aerospace CAN frame mapping (PGN 0x18FEE400, 0x18FE0200)',
+        'Clean engineering unit mappings (°C, bar, RPM, mm/s, L/h)',
+      ],
+      executeAction: () => {
+        router.push('/telemetry');
+      },
+    },
+    {
+      step: 3,
+      title: 'Transducer Integrity & Sensor Validation',
+      subtitle: 'Pre-Inference Signal Quality Assurance',
+      route: '/telemetry',
+      icon: Activity,
+      description:
+        'Before data reaches AI or physics models, the Sensor-Health Layer validates range bounds, flags frozen/stuck transducers (>15 ticks), checks rates of change, and enforces EGT vs CHT thermal consistency.',
+      actionLabel: 'View Sensor Health Quality Index',
+      highlights: [
+        'Transducer Health Status: 100% Valid (26/26 channels)',
+        'Damped anomaly scoring during sensor unreliability',
+        'Cross-channel thermocouple drift isolation',
+      ],
+      executeAction: () => {
+        router.push('/telemetry');
+      },
+    },
+    {
+      step: 4,
+      title: 'First-Principles Physics Grey-Box Model',
+      subtitle: 'Dynamic Virtual Engine Baseline',
       route: '/digital-twin',
       icon: Cpu,
       description:
-        'Explore the 9 core virtual engine subsystems: Cylinder/Combustion, Lubrication, Fuel Injection, Cooling, Exhaust, Crankshaft, Propeller, Sensors, and Electrical. Subsystem health dynamically reflects thermodynamic state.',
-      actionLabel: 'Inspect Subsystem Health Matrix',
+        'The thermodynamic digital twin calculates expected values as a function of RPM, manifold pressure, and throttle. Validates that current telemetry resides strictly within the VALID_OPERATING_REGION.',
+      actionLabel: 'Inspect Physics State & Envelopes',
       highlights: [
-        'Traffic-light health indexing (0-100%)',
-        'Subsystem drill-down with telemetry linkages',
-        'Synchronized mechanical & thermal state machine',
+        'Thermodynamic and hydrodynamic expected baselines',
+        'Model validity envelope classification (Valid / Extrapolated)',
+        'Real-time grey-box thermal efficiency calculations',
       ],
       executeAction: () => {
         router.push('/digital-twin');
       },
     },
     {
-      step: 3,
-      title: 'AI Anomaly Detection Trigger',
-      subtitle: 'Hybrid Isolation Forest & Physics Residuals',
+      step: 5,
+      title: 'Primary Scenario: Gradual Cyl 3 Injector Degradation',
+      subtitle: 'Fault Injection Laboratory',
+      route: '/fault-lab',
+      icon: AlertTriangle,
+      description:
+        'Inject the primary benchmark failure scenario: gradual nozzle varnishing on Cylinder 3 over 45 seconds. EGT3 rises +46°C, fuel flow jumps +8%, vibration increases +14%, while Cylinder 1, 2, and 4 remain normal.',
+      actionLabel: 'Inject Gradual Cyl 3 Injector Clogging',
+      highlights: [
+        'Non-linear progressive degradation over time',
+        'Realistic localized multi-sensor symptom propagation',
+        'Benchmark scenario for DRDO/iDEX technical evaluation',
+      ],
+      executeAction: () => {
+        injectFault('GRADUAL_INJECTOR_DEGRADATION', 'Cylinder 3 fuel injector nozzle varnishing and spray pattern degradation');
+        router.push('/fault-lab');
+      },
+    },
+    {
+      step: 6,
+      title: 'First-Principles Residual Generation',
+      subtitle: 'Physics-Based Residual Tracking',
       route: '/diagnostics',
       icon: Brain,
       description:
-        'Inject a subtle high-altitude overheating anomaly. Watch the AI Anomaly Detector compute z-score residuals and cross-correlations, pushing the anomaly score from 0.12 to >0.85.',
-      actionLabel: 'Inject Overheating & Run AI Detection',
+        'Observe how the observed telemetry departs from grey-box physics expectations. Normalized residual z = (observed - expected) / sigma exceeds 3.2σ on Cylinder 3 EGT and fuel flow.',
+      actionLabel: 'Examine Residual Table & Z-Scores',
       highlights: [
-        'Multi-variate Isolation Forest scoring',
-        'Residual error against nominal flight physics',
-        'Instantaneous confidence & data quality metrics',
+        'EGT Cyl 3 Residual: +46.2 °C (Normalized: +3.8σ)',
+        'Fuel Flow Residual: +1.8 L/h (Normalized: +2.4σ)',
+        'Cylinder 1, 2, 4 Residuals remain < 0.5σ (Localized fault)',
       ],
       executeAction: () => {
-        injectFault('OVERHEATING', 'Hackathon Demo: Rapid thermal buildup during climb phase');
         router.push('/diagnostics');
       },
     },
     {
-      step: 4,
-      title: 'Explainable AI & Fault Classification',
-      subtitle: 'Transparent Reasoning & Root Cause Attribution',
+      step: 7,
+      title: 'Hybrid Anomaly Detection & Persistence Filtering',
+      subtitle: 'Eliminating Transient Sensor False Alarms',
+      route: '/diagnostics',
+      icon: Brain,
+      description:
+        'The hybrid anomaly detector evaluates residuals and rolling trends. An N=3 temporal persistence filter prevents single-sample noise alarms, confirming the fault after 3 consecutive frames with 54s lead time.',
+      actionLabel: 'View Anomaly Score & Lead Time',
+      highlights: [
+        'Persistence Filter (N=3): Slashes false alarms from 4.8% to 0.4%',
+        'Anomaly Score reaches 0.88 / 1.00 (Persistence confirmed)',
+        'Earliest confirmation 54 seconds before thermal safety trip',
+      ],
+      executeAction: () => {
+        router.push('/diagnostics');
+      },
+    },
+    {
+      step: 8,
+      title: '12-Class Failure Diagnosis & Evidence Trail',
+      subtitle: 'Multi-Class Root-Cause Classification',
       route: '/fault-analysis',
       icon: AlertTriangle,
       description:
-        'The Explainable AI (XAI) engine decomposes the anomaly into horizontal factor contributions (EGT: +31%, CHT: +24%, Oil Temp: +18%), while the fault classifier isolates "Engine Thermal Overheating Trend".',
-      actionLabel: 'View XAI Factor Contributions',
+        'The diagnostic classifier isolates "Gradual Cylinder 3 Injector Degradation" with 94% confidence, generating an explicit evidence trail detailing localized EGT spread, fuel flow elevation, and acoustic vibration.',
+      actionLabel: 'View Diagnostic Reasoning & Evidence',
       highlights: [
-        'Quantitative parameter contribution breakdown',
-        '10 aero piston fault classification models',
-        'Confidence score and physical evidence mapping',
+        'Top Diagnosis: Gradual Cylinder 3 Injector Degradation (94%)',
+        'Evidence Trail: EGT3 +46°C above peer avg, fuel flow +8%',
+        'Traceable reasoning grounded in physical engine telemetry',
       ],
       executeAction: () => {
         router.push('/fault-analysis');
       },
     },
     {
-      step: 5,
-      title: 'RUL Estimation & Mission Reliability',
-      subtitle: 'Prognostic Degradation & Wear Forecasting',
+      step: 9,
+      title: 'Alternative Hypotheses & Counter-Evidence',
+      subtitle: 'Transparent Differential Diagnosis',
+      route: '/fault-analysis',
+      icon: AlertTriangle,
+      description:
+        'The system evaluates alternative hypotheses: Hypothesis B considers Thermocouple 3 sensor drift (35% likelihood), noting counter-evidence that simultaneous fuel flow increase and vibration elevation corroborate a real combustion fault.',
+      actionLabel: 'Inspect Alternative Hypotheses',
+      highlights: [
+        'Hypothesis B: Thermocouple 3 gradual calibration drift (35%)',
+        'Counter-Evidence: Fuel flow (+8%) and vibration (+14%) agree',
+        'Explicit data limitation notices preventing over-confidence',
+      ],
+      executeAction: () => {
+        router.push('/fault-analysis');
+      },
+    },
+    {
+      step: 10,
+      title: 'Uncertainty-Aware RUL Prognostics',
+      subtitle: 'Component-Specific Failure Criteria & 80% CI',
       route: '/rul',
       icon: PlaneTakeoff,
       description:
-        'Examine how active thermal degradation impacts Remaining Useful Life (RUL), updating the projected wear trajectory, confidence intervals (120-168 hrs), and forward milestones (+50h, +100h, +150h).',
-      actionLabel: 'Evaluate RUL Trajectory',
+        'RUL is projected against component-specific engineering criteria: Cylinder 3 nozzle thermal breakdown threshold (EGT > 910°C). Rather than an overconfident point estimate, it reports 82 hours with an 80% CI of [65, 104] hours.',
+      actionLabel: 'Analyze RUL Degradation Trajectory',
       highlights: [
-        'Dynamic degradation rate adjustment (points/hour)',
-        '90% statistical confidence boundaries',
-        'Predictive maintenance planning horizons',
+        'Estimated Median RUL: 82.0 operating hours',
+        '80% Prediction Interval: [65.0, 104.0] hours',
+        'Failure Threshold: Injector nozzle thermal limit (910 °C)',
       ],
       executeAction: () => {
         router.push('/rul');
       },
     },
     {
-      step: 6,
-      title: 'Automated Maintenance Advisory & Mission Report',
-      subtitle: 'Actionable Engineering Directives & Executive Export',
+      step: 11,
+      title: 'Mission Suitability & Operational Margins',
+      subtitle: 'Dynamic Decision Support for Flight Command',
+      route: '/mission-simulator',
+      icon: PlaneTakeoff,
+      description:
+        'Engine health degradation (78%) automatically transitions mission suitability from GO to CONDITIONAL GO. Evaluates 5 flight margins: Fuel reserve margin shrinks by 8%, and EGT headroom narrows to 18°C.',
+      actionLabel: 'Review Flight Safety Margins',
+      highlights: [
+        'Mission Clearance: CONDITIONAL GO (Altitude cap recommended)',
+        'EGT Headroom Margin: Degraded to 18 °C above cruise',
+        'Decision Support Disclaimer: Advisory only, pilot-in-command final',
+      ],
+      executeAction: () => {
+        router.push('/mission-simulator');
+      },
+    },
+    {
+      step: 12,
+      title: 'Maintenance Advisory & Post-Sortie Debrief',
+      subtitle: 'Standardized Engineering Reporting',
       route: '/reports',
       icon: FileText,
       description:
-        'Synthesizes all real-time telemetry, detected anomalies, fault classifications, and RUL forecasts into a prioritized maintenance queue and an exportable Mission Health Report.',
-      actionLabel: 'Generate Printable Mission Health Report',
+        'The Condition-Based Maintenance system automatically queues a HIGH priority directive for Cylinder 3 ultrasonic injector cleaning and flow bench calibration, generating a printable post-flight engineering debrief.',
+      actionLabel: 'Generate Debrief Report & Complete Tour',
       highlights: [
-        'Prioritized maintenance queue (Critical/High/Medium/Low)',
-        'Full mission telemetry envelopes and timeline',
-        'Official DRDO/iDEX demonstrator disclaimer',
+        'High Priority Maintenance Directive: Clean/replace Injector 3',
+        'Post-sortie PDF/CSV exportable engineering debrief document',
+        'Official research demonstrator disclaimers and sign-off block',
       ],
       executeAction: () => {
         router.push('/reports');
